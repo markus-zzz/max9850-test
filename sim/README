@@ -1,0 +1,1 @@
+iverilog test-bench.v ../rtl/*.v ../i2c-controller/i2c_slave_model.v
