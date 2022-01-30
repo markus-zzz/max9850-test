@@ -57,10 +57,10 @@ module ulx3s_top(
   assign led = {3'b000, gn[21], 4'b0000};
 
   // SCL
-  assign gp[27] = o_port_1[0] ? 1'b1 : 1'b0;
+  assign gp[27] = o_port_1[0] ? 1'bz : 1'b0;
   assign i_port_1[0] = gp[27];
   // SDA
-  assign gn[27] = o_port_2[0] ? 1'b1 : 1'b0;
+  assign gn[27] = o_port_2[0] ? 1'bz : 1'b0;
   assign i_port_2[0] = gn[27];
 
   top u_top(
@@ -73,7 +73,14 @@ module ulx3s_top(
 
     .i_port_0(i_port_0),
     .i_port_1(i_port_1),
-    .i_port_2(i_port_2)
+    .i_port_2(i_port_2),
+
+    .tonesel(btn[5]),
+
+    .LRCLK(gn[26]),
+    .BCLK(gn[25]),
+    .SDIN(gn[24]),
+    .MCLK(gn[23])
   );
 
 endmodule

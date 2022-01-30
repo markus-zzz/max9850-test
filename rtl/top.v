@@ -38,7 +38,14 @@ module top(
 	output wire I2C_SCL,
 	output wire I2C_SDA_O,
 	output wire I2C_SDA_OE,
-	input wire  I2C_SDA_I
+	input wire  I2C_SDA_I,
+
+  input wire tonesel,
+
+  output wire LRCLK,
+  output wire BCLK,
+  output wire SDIN,
+  output wire MCLK
 );
 
   wire cpu_mem_valid;
@@ -229,5 +236,63 @@ module top(
 	  .I2C_SDA_I(I2C_SDA_I)
 	);
 `endif
+
+  wire clk25mhz;
+  assign clk25mhz = i_clk;
+  reg [10:0] clk_cntr;
+
+  always @(posedge clk25mhz) begin
+    if (i_rst)
+      clk_cntr <= 0;
+    else
+      clk_cntr <= clk_cntr + 1;
+  end
+
+  assign MCLK = clk_cntr[0]; // 12.5MHz
+  assign LRCLK = clk_cntr[8]; // 48.8kHz
+  assign BCLK = clk_cntr[3]; // 1.5625MHz
+
+  reg [15:0] phase_accum_left;
+  reg [15:0] phase_accum_right;
+  always @(posedge clk25mhz) begin
+    if (i_rst) begin
+      phase_accum_left <= 0;
+      phase_accum_right <= 0;
+    end
+    else begin
+      phase_accum_left <= phase_accum_left + (tonesel ? 345 : 1234);
+      phase_accum_right <= phase_accum_right + (~tonesel ? 345 : 1234);
+    end
+  end
+
+  reg prev_lrclk;
+  always @(posedge clk25mhz) begin
+    if (i_rst)
+      prev_lrclk <= 0;
+    else
+      prev_lrclk <= LRCLK;
+  end
+
+  reg prev_bclk;
+  always @(posedge clk25mhz) begin
+    if (i_rst)
+      prev_bclk <= 0;
+    else
+      prev_bclk <= BCLK;
+  end
+
+  reg [15:0] shift;
+  always @(posedge clk25mhz) begin
+    if (i_rst)
+      shift <= 0;
+    else if (~prev_lrclk & LRCLK)
+      shift <= phase_accum_left;
+    else if (prev_lrclk & ~LRCLK)
+      shift <= phase_accum_right;
+    else if (~prev_bclk & BCLK)
+      shift <= {shift[14:0], 1'b0};
+  end
+
+  assign SDIN = shift[15];
 
 endmodule

@@ -20,138 +20,9 @@
 
 #include <stdint.h>
 
-#define R_PORT_0 ((volatile uint32_t *)0x30000000)
-#define R_PORT_1 ((volatile uint32_t *)0x30000004)
-#define R_PORT_2 ((volatile uint32_t *)0x30000008)
-
-#define R_I2C_CTRL ((volatile uint32_t *)0x50000000)
-#define R_I2C_STATUS ((volatile uint32_t *)0x50000000)
-
 #define R_I2C_SCL ((volatile uint32_t *)0x30000004)
 #define R_I2C_SDA ((volatile uint32_t *)0x30000008)
 
-#define assert(x)                                                              \
-  if (!(x)) {                                                                  \
-    uint32_t toggle = 0x55555555;                                              \
-    while (1) {                                                                \
-      *R_PORT_0 = toggle;                                                      \
-      toggle = ~toggle;                                                        \
-    }                                                                          \
-  }
-
-#if 0
-const uint32_t i2c_ctrl_we_bit = 1 << 10;
-const uint32_t i2c_ctrl_start_bit = 1 << 9;
-const uint32_t i2c_ctrl_stop_bit = 1 << 8;
-
-const uint32_t i2c_status_busy_bit = 1 << 9;
-const uint32_t i2c_status_ack_bit = 1 << 8;
-
-void i2c_mem_write(uint8_t i2c_addr, uint8_t mem_addr, uint8_t mem_data) {
-  uint32_t status;
-  /* Make sure interface is not busy */
-  while (*R_I2C_STATUS & i2c_status_busy_bit)
-    ;
-
-  /* Address for write mode */
-  *R_I2C_CTRL = (i2c_ctrl_we_bit | i2c_ctrl_start_bit | i2c_addr << 1 | 0 << 0);
-
-  /* Wait until complete */
-  while ((status = *R_I2C_STATUS) & i2c_status_busy_bit)
-    ;
-  assert(status & i2c_status_ack_bit && "I2C address ACK");
-
-  /* Memory address */
-  *R_I2C_CTRL = (i2c_ctrl_we_bit | mem_addr);
-
-  /* Wait until complete */
-  while ((status = *R_I2C_STATUS) & i2c_status_busy_bit)
-    ;
-  assert(status & i2c_status_ack_bit && "MEM address ACK");
-
-  /* Memory data */
-  *R_I2C_CTRL = (i2c_ctrl_we_bit | i2c_ctrl_stop_bit | mem_data);
-
-  /* Wait until complete */
-  while ((status = *R_I2C_STATUS) & i2c_status_busy_bit)
-    ;
-  assert(status & i2c_status_ack_bit && "MEM write ACK");
-}
-
-uint8_t i2c_mem_read(uint8_t i2c_addr, uint8_t mem_addr) {
-  uint32_t status;
-  /* Make sure interface is not busy */
-  while (*R_I2C_STATUS & i2c_status_busy_bit)
-    ;
-
-  /* Address for write mode */
-  *R_I2C_CTRL = (i2c_ctrl_we_bit | i2c_ctrl_start_bit | i2c_addr << 1 | 0 << 0);
-
-  /* Wait until complete */
-  while ((status = *R_I2C_STATUS) & i2c_status_busy_bit)
-    ;
-  assert(status & i2c_status_ack_bit && "I2C (write) address ACK");
-
-  /* Memory address */
-  *R_I2C_CTRL = (i2c_ctrl_we_bit | mem_addr);
-
-  /* Wait until complete */
-  while ((status = *R_I2C_STATUS) & i2c_status_busy_bit)
-    ;
-  assert(status & i2c_status_ack_bit && "MEM address ACK");
-
-  /* Address for read mode */
-  *R_I2C_CTRL = (i2c_ctrl_we_bit | i2c_ctrl_start_bit | i2c_addr << 1 | 1 << 0);
-
-  /* Wait until complete */
-  while ((status = *R_I2C_STATUS) & i2c_status_busy_bit)
-    ;
-  assert(status & i2c_status_ack_bit && "I2C (read) address ACK");
-
-  /* Memory data */
-  *R_I2C_CTRL = (i2c_ctrl_stop_bit);
-
-  /* Wait until complete */
-  while ((status = *R_I2C_STATUS) & i2c_status_busy_bit)
-    ;
-  assert(status & i2c_status_ack_bit && "MEM read ACK");
-
-  return status & 0xff;
-}
-
-int main(void) {
-  /* begin - test */
-  /* I2C slave model has address 7'b001_0000 */
-#define I2C_ADDR 0x10
-#define DATA_SIZE 16
-  uint8_t data[DATA_SIZE];
-
-  /* Generate reference data */
-  for (int i = 0; i < DATA_SIZE; i++) {
-    data[i] = i + 5;
-  }
-
-  /* Write data to memory in forward order */
-  for (int i = 0; i < DATA_SIZE; i++) {
-    i2c_mem_write(I2C_ADDR, i, data[i]);
-  }
-
-  /* Read data from memory (and verify) in forward order */
-  for (int i = 0; i < DATA_SIZE; i++) {
-    assert(i2c_mem_read(I2C_ADDR, i) == data[i]);
-  }
-
-  /* Read data from memory (and verify) in reverse order */
-  for (int i = 0; i < DATA_SIZE; i++) {
-    assert(i2c_mem_read(I2C_ADDR, DATA_SIZE - 1 - i) ==
-           data[DATA_SIZE - 1 - i]);
-  }
-
-  /* end - test */
-
-  return 0;
-}
-#else
 void i2c_delay() {
   for (volatile int i = 0; i < 4; i++)
     ;
@@ -192,34 +63,66 @@ uint8_t i2c_write_byte(uint8_t byte) {
   return *R_I2C_SDA & 1;
 }
 
+void max9850_write_reg(uint8_t addr, uint8_t data) {
+  i2c_start();
+  i2c_write_byte(0x20); // I2C address for write
+  i2c_write_byte(addr);
+  i2c_write_byte(data);
+  i2c_stop();
+}
+
+void long_delay() {
+  for (volatile int i = 0; i < 50000; i++)
+    i2c_delay();
+}
+
 int main(void) {
   *R_I2C_SCL = 1;
   *R_I2C_SDA = 1;
 
-  i2c_delay();
-  i2c_delay();
-  i2c_delay();
+  long_delay();
+
+  // Enable (0x5) - Disable everything
+  max9850_write_reg(0x05, 0x00);
+
+  // Clock (0x6) - ICLK = MCLK = 12.5MHz
+  max9850_write_reg(0x04, 0x00);
+
+  // General Purpose (0x3)
+  max9850_write_reg(0x03, 0x00);
+
+  // Digital Audio (0xA) - MAS=0 (slave mode), BCINV=1
+  max9850_write_reg(0x0a, 0x20);
+
+  // LRCLK MSB (0x8) - INT=1 (integer mode)
+  max9850_write_reg(0x08, 0x80);
+
+  // LRCLK LSB (0x9) - LSB=16
+  max9850_write_reg(0x09, 0x10);
+
+  // Charge Pump (0x7) - NC=9
+  max9850_write_reg(0x07, 0x09);
+
+  // Interrupt Enable (0x4) - Disable all interrupts
+  max9850_write_reg(0x04, 0x00);
+
+  // Volume (0x2)
+  max9850_write_reg(0x02, 0x1c);
+
+  // Enable (0x5)
+  max9850_write_reg(0x05, 0xfd);
 
   while (1) {
-    i2c_start();
-    i2c_write_byte(0x20); // I2C address for write
-    i2c_write_byte(0x03); // General-purpose register
-    i2c_write_byte(0x20); // General-purpose register - GPIO outputs low
-    i2c_stop();
+    // General-purpose register - GPIO outputs low
+    max9850_write_reg(0x03, 0x20);
 
-    for (volatile int i = 0; i < 50000; i++)
-      i2c_delay();
+    long_delay();
 
-    i2c_start();
-    i2c_write_byte(0x20); // I2C address for write
-    i2c_write_byte(0x03); // General-purpose register
-    i2c_write_byte(0x60); // General-purpose register - GPIO outputs high-z
-    i2c_stop();
+    // General-purpose register - GPIO outputs high-z
+    max9850_write_reg(0x03, 0x60);
 
-    for (volatile int i = 0; i < 50000; i++)
-      i2c_delay();
+    long_delay();
   }
 
   return 0;
 }
-#endif
